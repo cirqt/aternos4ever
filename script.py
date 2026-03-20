@@ -44,22 +44,14 @@ ADBLOCK_SELECTORS = [
     (By.XPATH, "//div[contains(@class,'btn-white') and .//i[contains(@class,'fa-sad-tear')]]")
 ]
 
-# Selectors for the "action not possible" / error popup that blocks extend.
-# Aternos shows various flavours — we cast a wide net on text content.
-ACTION_NOT_POSSIBLE_SELECTORS = [
-    (By.XPATH, "//*[contains(text(),'not possible')]"),
-    (By.XPATH, "//*[contains(text(),'not available')]"),
-    (By.XPATH, "//*[contains(text(),'cannot')]"),
-    (By.XPATH, "//*[contains(@class,'alert') and contains(@class,'error')]"),
-    (By.XPATH, "//*[contains(@class,'notification') and contains(@class,'error')]"),
-    (By.XPATH, "//*[contains(@class,'modal') and .//*[contains(text(),'not')]]"),
-]
-
 # The green Start button shown when the server is offline.
 START_BUTTON_SELECTOR = (By.CSS_SELECTOR, "button#start.btn-success")
 
-# "Okay" dismiss button on the "This is currently not possible" popup.
-OKAY_BUTTON_SELECTOR = (By.CSS_SELECTOR, "button.btn.btn-green")
+# Selectors for the green "Okay" button on the "This is currently not possible" popup.
+OKAY_CLOSE_SELECTORS = [
+    (By.CSS_SELECTOR, "button.btn.btn-green"),          # green Okay button
+    (By.XPATH, "//button[normalize-space()='Okay']"),   # text fallback
+]
 
 # "Confirm now!" button shown in queue to confirm you're still waiting.
 CONFIRM_NOW_SELECTORS = [
@@ -118,18 +110,6 @@ def _click_first_visible(driver, selectors):
             pass
     return None
 
-def check_action_not_possible(driver):
-    """Return True if an 'action not possible' style popup/alert is visible."""
-    for by, selector in ACTION_NOT_POSSIBLE_SELECTORS:
-        try:
-            el = driver.find_element(by, selector)
-            if el.is_displayed():
-                return True
-        except NoSuchElementException:
-            pass
-    return False
-
-
 def try_start_server(driver):
     """Click the Start button if it is visible. Return True if clicked."""
     by, selector = START_BUTTON_SELECTOR
@@ -187,16 +167,28 @@ def main():
 
     while True:
         try:
-            # 1. Dismiss adblock warning if present
+            # 1. Dismiss "This is currently not possible" popup FIRST — it sits on
+            #    top of everything and will block all other clicks if left open.
+            for by, sel in OKAY_CLOSE_SELECTORS:
+                try:
+                    el = driver.find_element(by, sel)
+                    if el.is_displayed():
+                        driver.execute_script("arguments[0].click();", el)
+                        print(f"[{time.strftime('%H:%M:%S')}] 'Not possible' popup dismissed (Okay clicked).")
+                        break
+                except NoSuchElementException:
+                    pass
+
+            # 2. Dismiss adblock warning if present
             label = _click_first_visible(driver, ADBLOCK_SELECTORS)
             if label:
                 print(f"[{time.strftime('%H:%M:%S')}] Adblock warning dismissed. ('{label}')")
 
-            # 2. Dismiss Google safeframe ad (iframe-based)
+            # 3. Dismiss Google safeframe ad (iframe-based)
             if dismiss_safeframe_ad(driver):
                 print(f"[{time.strftime('%H:%M:%S')}] Safeframe ad closed.")
 
-            # 3. Dismiss other ad overlays if present
+            # 4. Dismiss other ad overlays if present
             label = _click_first_visible(driver, AD_SELECTORS)
             if label:
                 print(f"[{time.strftime('%H:%M:%S')}] Ad dismissed. ('{label}')")
@@ -205,20 +197,6 @@ def main():
             label = _click_first_visible(driver, CONFIRM_NOW_SELECTORS)
             if label:
                 print(f"[{time.strftime('%H:%M:%S')}] Queue confirmation clicked.")
-
-            if check_action_not_possible(driver):
-                print(f"[{time.strftime('%H:%M:%S')}] 'Action not possible' popup detected — dismissing...")
-                by, sel = OKAY_BUTTON_SELECTOR
-                try:
-                    okay = driver.find_element(by, sel)
-                    if okay.is_displayed():
-                        try:
-                            okay.click()
-                        except Exception:
-                            driver.execute_script("arguments[0].click();", okay)
-                        print(f"[{time.strftime('%H:%M:%S')}] Popup dismissed (Okay clicked).")
-                except NoSuchElementException:
-                    pass
 
             # 6. Click Start button whenever it's visible (server is offline)
             if try_start_server(driver):
