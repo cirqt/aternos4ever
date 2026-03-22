@@ -17,6 +17,7 @@ Usage:
 
 import os
 import time
+from collections import deque
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.service import Service
@@ -165,6 +166,8 @@ def main():
 
     print(f"Watching for extend button every {CHECK_EVERY}s. Press Ctrl+C to stop.\n")
 
+    recent_log: deque = deque(maxlen=10)  # rolling window of last 10 log entries
+
     while True:
         try:
             # 1. Dismiss "This is currently not possible" popup FIRST — it sits on
@@ -182,7 +185,16 @@ def main():
             # 2. Dismiss adblock warning if present
             label = _click_first_visible(driver, ADBLOCK_SELECTORS)
             if label:
+                msg = "adblock"
+                recent_log.append(msg)
                 print(f"[{time.strftime('%H:%M:%S')}] Adblock warning dismissed. ('{label}')")
+                if recent_log.count(msg) > 3:
+                    print(f"[{time.strftime('%H:%M:%S')}] Adblock warning stuck — refreshing page.")
+                    recent_log.clear()
+                    driver.refresh()
+                    time.sleep(3)
+            else:
+                recent_log.append("ok")
 
             # 3. Dismiss Google safeframe ad (iframe-based)
             if dismiss_safeframe_ad(driver):
