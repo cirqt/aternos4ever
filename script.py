@@ -170,6 +170,14 @@ def main():
 
     while True:
         try:
+            # 0. Verify we are still on the correct server panel URL.
+            #    Aternos sometimes redirects /server/ → /servers/ after a refresh.
+            current_url = driver.current_url
+            if current_url.rstrip("/") != SERVER_URL.rstrip("/"):
+                print(f"[{time.strftime('%H:%M:%S')}] URL drifted to {current_url!r} — navigating back to {SERVER_URL!r}.")
+                driver.get(SERVER_URL)
+                time.sleep(3)
+
             # 1. Dismiss "This is currently not possible" popup FIRST — it sits on
             #    top of everything and will block all other clicks if left open.
             for by, sel in OKAY_CLOSE_SELECTORS:
