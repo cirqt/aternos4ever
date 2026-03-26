@@ -15,7 +15,10 @@ Usage:
   c:/python312/python.exe script.py
 """
 
+import atexit
 import os
+import shutil
+import tempfile
 import time
 from collections import deque
 from selenium import webdriver
@@ -144,11 +147,33 @@ def make_driver() -> webdriver.Firefox:
     service = Service(GeckoDriverManager().install())
     options = webdriver.FirefoxOptions()
 
-    # Use your real Firefox profile so Aternos sees you as already logged in
-    profile_path = os.path.join(os.environ["APPDATA"], r"Mozilla\Firefox\Profiles\l3oe4zey.default-release")
+    # Use your real Firefox profile so Aternos sees you as already logged in.
+    # Copy it to a temp dir so it works even when Firefox is already running.
+    _profiles_dir = os.path.join(os.environ["APPDATA"], r"Mozilla\Firefox\Profiles")
+    _profile_name = next(
+        (p for p in os.listdir(_profiles_dir) if p.endswith(".default-release")),
+        None,
+    )
+    if _profile_name is None:
+        print("ERROR: Could not find a Firefox profile ending in '.default-release'.")
+        print(f"Profiles found in {_profiles_dir}:")
+        for p in os.listdir(_profiles_dir):
+            print(f"  {p}")
+        raise RuntimeError("No default-release Firefox profile found.")
+    src_profile = os.path.join(_profiles_dir, _profile_name)
+    tmp_dir = tempfile.mkdtemp(prefix="aternos_ff_profile_")
+    profile_path = os.path.join(tmp_dir, "profile")
+    print(f"Copying Firefox profile to {profile_path} ...")
+    shutil.copytree(src_profile, profile_path, ignore_dangling_symlinks=True)
+    # Remove the lock files so Firefox doesn't think the profile is already open
+    for lock_file in ("lock", ".parentlock"):
+        lf = os.path.join(profile_path, lock_file)
+        if os.path.exists(lf):
+            os.remove(lf)
+    atexit.register(shutil.rmtree, tmp_dir, True)  # clean up on exit
     options.add_argument("-profile")
     options.add_argument(profile_path)
-    options.add_argument("--no-remote")  # allow new instance even if Firefox is already open
+    options.add_argument("--no-remote")
 
     driver = webdriver.Firefox(service=service, options=options)
     driver.maximize_window()
