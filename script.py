@@ -138,7 +138,8 @@ def find_extend_button(driver):
             pass
     return None
 
-def main():
+def make_driver() -> webdriver.Firefox:
+    """Create and return a new Firefox WebDriver pointed at SERVER_URL."""
     print("Starting Firefox...")
     service = Service(GeckoDriverManager().install())
     options = webdriver.FirefoxOptions()
@@ -152,6 +153,11 @@ def main():
     driver = webdriver.Firefox(service=service, options=options)
     driver.maximize_window()
     driver.get(SERVER_URL)
+    return driver
+
+
+def main():
+    driver = make_driver()
 
     # Wait for the user to log in if needed
     print(f"\nIf you are not already logged in, do so now. "
@@ -177,6 +183,17 @@ def main():
                 print(f"[{time.strftime('%H:%M:%S')}] URL drifted to {current_url!r} — navigating back to {SERVER_URL!r}.")
                 driver.get(SERVER_URL)
                 time.sleep(3)
+                # If we're still not on the right page, restart the browser entirely.
+                if driver.current_url.rstrip("/") != SERVER_URL.rstrip("/"):
+                    print(f"[{time.strftime('%H:%M:%S')}] Redirect failed — reopening Firefox from scratch.")
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
+                    time.sleep(2)
+                    driver = make_driver()
+                    time.sleep(3)
+                    continue
 
             # 1. Dismiss "This is currently not possible" popup FIRST — it sits on
             #    top of everything and will block all other clicks if left open.
